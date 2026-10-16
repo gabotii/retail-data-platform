@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.env
+.env.docker
+data/
+*.egg-info/
+dist/
+build/
+.streamlit/secrets.toml

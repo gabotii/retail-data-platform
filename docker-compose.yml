@@ -1,0 +1,125 @@
+# Full local stack:  docker compose up -d --build
+#   Dashboard  http://localhost:8501
+#   KPI API    http://localhost:8000/docs
+#   Demo API   http://localhost:8001/docs   (simulated inventory source system)
+# Ports are bound to 127.0.0.1 only. Credentials below are demo defaults for a local
+# laptop; override them through a .env file (see .env.example) for anything else.
+
+x-sim-env: &sim-env
+  SIM_SEED: ${SIM_SEED:-42}
+  SIM_START_DATE: ${SIM_START_DATE:-2026-07-01}
+  SIM_DAYS: ${SIM_DAYS:-60}
+  SIM_TRAFFIC_SCALE: ${SIM_TRAFFIC_SCALE:-0.5}
+  SIM_DIRTY_RATE: ${SIM_DIRTY_RATE:-0.01}
+
+x-app-env: &app-env
+  <<: *sim-env
+  APP_ENV: production
+  DATABASE_URL: postgresql+psycopg://retail:${POSTGRES_PASSWORD:-retail_demo_pw}@db:5432/retail
+  DEMO_API_URL: http://demo-api:8001
+  DEMO_API_TOKEN: ${DEMO_API_TOKEN:-demo-token}
+  LOG_FORMAT: json
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+x-app: &app
+  build: .
+  image: retail-data-platform:latest
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp, /home/app]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: retail
+      POSTGRES_USER: retail
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-retail_demo_pw}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:${DB_PORT:-5433}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retail -d retail"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  demo-api:
+    <<: *app
+    command: ["uvicorn", "--factory", "retail_platform.demo_api.app:create_app",
+              "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      <<: *sim-env
+      DEMO_API_TOKEN: ${DEMO_API_TOKEN:-demo-token}
+      DEMO_API_FAILURE_RATE: ${DEMO_API_FAILURE_RATE:-0.05}
+    ports: ["127.0.0.1:8001:8001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["retail", "migrate"]
+    environment: *app-env
+    depends_on:
+      db: {condition: service_healthy}
+
+  generate:
+    <<: *app
+    restart: "no"
+    command: ["retail", "generate"]
+    environment: *app-env
+    volumes: [landing:/data]
+
+  pipeline:
+    <<: *app
+    command: ["retail", "schedule", "--interval", "${PIPELINE_INTERVAL_SECONDS:-900}"]
+    environment: *app-env
+    volumes: [landing:/data]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      generate: {condition: service_completed_successfully}
+      demo-api: {condition: service_healthy}
+
+  api:
+    <<: *app
+    command: ["uvicorn", "--factory", "retail_platform.api.app:create_app",
+              "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    environment:
+      <<: *app-env
+      API_KEY: ${API_KEY:-}
+    volumes: [landing:/data]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  dashboard:
+    <<: *app
+    command: ["streamlit", "run", "/app/dashboard.py", "--server.address", "0.0.0.0",
+              "--server.port", "8501"]
+    environment: *app-env
+    ports: ["127.0.0.1:8501:8501"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+volumes:
+  pgdata:
+  landing:

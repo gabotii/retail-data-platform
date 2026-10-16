@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "retail-data-platform"
+version = "1.0.0"
+description = "Retail data platform: CSV + API ingestion, data quality, pandas transforms, PostgreSQL star schema, FastAPI and Streamlit KPIs."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "MIT" }
+dependencies = [
+    "pandas>=3.0,<3.1",
+    "numpy>=2.3,<2.4",
+    "sqlalchemy>=2.1,<2.2",
+    "psycopg[binary]>=3.3,<3.4",
+    "fastapi>=0.143,<0.144",
+    "uvicorn>=0.38,<0.39",
+    "httpx>=0.28,<0.29",
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.15,<2.16",
+    "streamlit>=1.65,<1.66",
+    "altair>=6.3,<6.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov>=7.0",
+    "ruff>=0.15",
+    "mypy>=1.19",
+    "pandas-stubs>=3.0",
+]
+
+[project.scripts]
+retail = "retail_platform.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retail_platform"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: needs a PostgreSQL database (TEST_DATABASE_URL)",
+]
+filterwarnings = [
+    "error::FutureWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
+
+[tool.coverage.run]
+source = ["retail_platform"]
+omit = ["src/retail_platform/dashboard/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "PL", "RUF", "N", "S", "PD"]
+ignore = [
+    "PLR0913",  # pipeline functions legitimately take several collaborators
+    "PLR0917",
+    "PLR2004",  # magic numbers are fine in a domain simulation
+    "S608",     # SQL is built only from internal constants, never user input
+    "RUF001",   # Spanish labels contain accented characters on purpose
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR0915", "PLC0415", "PD"]
+"src/retail_platform/cli.py" = ["PLC0415"]  # lazy imports keep `retail migrate` light
+"src/retail_platform/synthetic/**" = ["S311"]  # non-crypto RNG is the point
+"src/retail_platform/demo_api/**" = ["S311"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/retail_platform"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
