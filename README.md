@@ -200,3 +200,6 @@ tests/unit · tests/integration · scripts/smoke_test.py · docs/architecture.md
 Los nombres de tiendas, marcas y productos son ficticios. El caso de uso (ventas,
 inventario y quiebres de stock en una cadena de supermercados) es el habitual del retail
 masivo en Chile.
+
+<img width="1885" height="910" alt="image" src="https://github.com/user-attachments/assets/d0fa294d-0a52-4819-9b83-b826c2c4e6c7" />
+
